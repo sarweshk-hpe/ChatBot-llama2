@@ -1,27 +1,53 @@
 import streamlit as st
 import replicate
 import os
-
+from key import get_key
 # App title
-st.set_page_config(page_title="🦙💬 Llama 2 Chatbot")
+st.set_page_config(page_title="Maths LLM")
+
+
+# Main content
+st.title("Maths LLM")
+st.write("Solve maths using DeepSeek-Math-7B-instruct LLM Model. ")
+st.write("DeepSeekMath is initialized with DeepSeek-Coder-v1.5 7B and continues pre-training on math-related tokens sourced from Common Crawl, together with natural language and code data for 500B tokens. DeepSeekMath 7B has achieved an impressive score of 51.7% on the competition-level MATH benchmark without relying on external toolkits and voting techniques, approaching the performance level of Gemini-Ultra and GPT-4. [Model paper link](\"https://arxiv.org/pdf/2402.03300.pdf\")")
+def add_logo():
+    st.markdown(
+        """
+        <style>
+            [data-testid="stSidebarNav"] {
+                background-image: url(logo.png);
+                background-repeat: no-repeat;
+                padding-top: 120px;
+                background-position: 20px 20px;
+            }
+            [data-testid="stSidebarNav"]::before {
+                content: "My Company Name";
+                margin-left: 20px;
+                margin-top: 20px;
+                font-size: 30px;
+                position: relative;
+                top: 100px;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+add_logo()
 
 # Replicate Credentials
 with st.sidebar:
-    st.title('🦙💬 Llama 2 Chatbot')
-    if 'REPLICATE_API_TOKEN' in st.secrets:
-        st.success('API key already provided!', icon='✅')
-        replicate_api = st.secrets['REPLICATE_API_TOKEN']
-    else:
-        replicate_api = st.text_input('Enter Replicate API token:', type='password')
-        if not (replicate_api.startswith('r8_') and len(replicate_api)==40):
-            st.warning('Please enter your credentials!', icon='⚠️')
-        else:
-            st.success('Proceed to entering your prompt message!', icon='👉')
-os.environ['REPLICATE_API_TOKEN'] = replicate_api
+    logo_url = './logo.png'
+    st.sidebar.image(logo_url, width=100)
+    
+os.environ['REPLICATE_API_TOKEN'] = get_key()
 
 # Store LLM generated responses
 if "messages" not in st.session_state.keys():
-    st.session_state.messages = [{"role": "assistant", "content": "How may I assist you today?"}]
+    st.session_state.messages = [{"role": "assistant", "content": "Got any equations for me?", "top_k": 50,
+        "top_p": 0.9,
+        "temperature": 1,
+        "max_new_tokens": 500}]
 
 # Display or clear chat messages
 for message in st.session_state.messages:
@@ -29,24 +55,25 @@ for message in st.session_state.messages:
         st.write(message["content"])
 
 def clear_chat_history():
-    st.session_state.messages = [{"role": "assistant", "content": "How may I assist you today?"}]
+    st.session_state.messages = [{"role": "assistant", "content": "Got any equations for me?"}]
 st.sidebar.button('Clear Chat History', on_click=clear_chat_history)
 
-# Function for generating LLaMA2 response
-def generate_llama2_response(prompt_input):
-    string_dialogue = "You are a helpful assistant. You do not respond as 'User' or pretend to be 'User'. You only respond once as 'Assistant'."
-    for dict_message in st.session_state.messages:
-        if dict_message["role"] == "user":
-            string_dialogue += "User: " + dict_message["content"] + "\\n\\n"
-        else:
-            string_dialogue += "Assistant: " + dict_message["content"] + "\\n\\n"
-    output = replicate.run('a16z-infra/llama13b-v2-chat:df7690f1994d94e96ad9d568eac121aecf50684a0b0963b25a41cc40061269e5', 
-                           input={"prompt": f"{string_dialogue} {prompt_input} Assistant: ",
-                                  "temperature":0.1, "top_p":0.9, "max_length":512, "repetition_penalty":1})
+
+def generate_llm_response(prompt_input):
+    output = replicate.run(
+    "deepseek-ai/deepseek-math-7b-instruct:8328993709e75f2e6417d9ac24a1330961545f6d05d1ab13cdfdd21c00cb1a6e",
+    input={
+        "text": f"Solve this algebraic equation and give me the proper workings:\"{prompt_input}\"",
+        "top_k": 50,
+        "top_p": 0.9,
+        "temperature": 1,
+        "max_new_tokens": 500
+    }
+)
     return output
 
 # User-provided prompt
-if prompt := st.chat_input(disabled=not replicate_api):
+if prompt := st.chat_input(disabled=not get_key()):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.write(prompt)
@@ -55,7 +82,7 @@ if prompt := st.chat_input(disabled=not replicate_api):
 if st.session_state.messages[-1]["role"] != "assistant":
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
-            response = generate_llama2_response(prompt)
+            response = generate_llm_response(prompt)
             placeholder = st.empty()
             full_response = ''
             for item in response:
